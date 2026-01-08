@@ -1,0 +1,11 @@
+# Ignore the Virtual Environment (Huge folder)
+.venv/
+venv/
+env/
+
+# Ignore Python cache files (Junk)
+__pycache__/
+*.pyc
+
+# Optional: Ignore VS Code settings
+.vscode/

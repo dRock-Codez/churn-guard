@@ -14,6 +14,7 @@ from datetime import datetime
 
 # --- 1. SETUP & LOAD RESOURCES ---
 model = xgb.Booster()
+feature_names = []
 
 def load_model_resources():
     global model, feature_names
@@ -27,25 +28,23 @@ def load_model_resources():
 
 load_model_resources()
 
-''' def get_all_ids():
-    try:
-        conn = sqlite3.connect('churn.db')
-        # LIMIT 2000 prevents the MemoryError by not loading too much data at once
-        ids = pd.read_sql("SELECT customerID FROM customers LIMIT 2000", conn)['customerID'].tolist()
-        conn.close()
-        return ids
-    except:
-        return []
-
-all_customer_ids = get_all_ids() '''
-
 def safe_predict(input_df):
+    """Predicts for a single row or dataframe, ensuring columns match."""
     if not feature_names: return 0.5
+    
+    # Ensure all model features exist in input, default to 0
     for col in feature_names:
-        if col not in input_df.columns: input_df[col] = 0
+        if col not in input_df.columns: 
+            input_df[col] = 0
+            
+    # Reorder columns to match model exactly
     input_df = input_df[feature_names]
+    
     dmat = xgb.DMatrix(input_df)
-    return model.predict(dmat)[0]
+    
+    # If single row, return float. If multiple, return array.
+    preds = model.predict(dmat)
+    return preds[0] if len(preds) == 1 else preds
 
 # --- 2. CONFIGURATION ---
 external_stylesheets = [
@@ -96,12 +95,17 @@ app.layout = html.Div(id='main-page', style={'minHeight': '100vh', 'fontFamily':
                 html.H1([html.I(className="bi bi-robot me-2"), "ChurnGuard AI"], 
                         id='app-title', className="text-start text-md-center", style={'fontWeight': '600', 'letterSpacing': '1px'}),
                 html.P("Real-time Customer Retention Analytics", 
-                       id='app-subtitle', className="text-start text-md-center mb-0", style={'fontSize': '0.9rem'})
-            ], width=8, md=8, className="d-flex flex-column justify-content-center"),
+                        id='app-subtitle', className="text-start text-md-center mb-0", style={'fontSize': '0.9rem'})
+            ], width=7, md=7, className="d-flex flex-column justify-content-center"),
             
+            # HEADER BUTTONS
             dbc.Col([
+                # Portfolio Trigger Button
+                dbc.Button([html.I(className="bi bi-pie-chart-fill me-2"), "Portfolio Risk"], 
+                           id="open-portfolio", n_clicks=0, color="info", className="me-3", style={'fontWeight':'600'}),
+                
                 dbc.Button(html.I(id='theme-icon', className="bi bi-sun-fill"), id='theme-toggle', n_clicks=0, className="d-flex align-items-center justify-content-center")
-            ], width=4, md=4, className="d-flex justify-content-end align-items-center")
+            ], width=5, md=5, className="d-flex justify-content-end align-items-center")
         ], className="mb-5 align-items-center"),
 
         dbc.Row([
@@ -123,28 +127,10 @@ app.layout = html.Div(id='main-page', style={'minHeight': '100vh', 'fontFamily':
                         html.Div(id='search-msg', className="text-center small mb-3", style={'minHeight': '20px'}),
 
                         html.Label("Tenure (Months)", id='lbl-tenure', className="fw-bold mt-2"),
-dcc.Slider(
-    id='tenure-slider', 
-    min=0, 
-    max=72, 
-    step=1, 
-    value=12, 
-    # This 'marks' property fixes the visual clutter
-    marks={i: f'{i}m' for i in range(0, 73, 12)}, 
-    tooltip={"placement": "bottom", "always_visible": True}
-),
+                        dcc.Slider(id='tenure-slider', min=0, max=72, step=1, value=12, marks={i: f'{i}m' for i in range(0, 73, 12)}, tooltip={"placement": "bottom", "always_visible": True}),
 
-html.Label("Monthly Charges ($)", id='lbl-charges', className="fw-bold mt-4"),
-dcc.Slider(
-    id='charges-slider', 
-    min=20, 
-    max=120, 
-    step=1, 
-    value=70, 
-    # Show a label every $20 instead of every $1
-    marks={i: f'${i}' for i in range(20, 121, 20)}, 
-    tooltip={"placement": "bottom", "always_visible": True}
-),
+                        html.Label("Monthly Charges ($)", id='lbl-charges', className="fw-bold mt-4"),
+                        dcc.Slider(id='charges-slider', min=20, max=120, step=1, value=70, marks={i: f'${i}' for i in range(20, 121, 20)}, tooltip={"placement": "bottom", "always_visible": True}),
                         
                         html.Label("Contract Type", id='lbl-contract', className="fw-bold mt-4 mb-2"),
                         dcc.Dropdown(id='contract-dropdown', options=[{'label': 'Month-to-Month', 'value': 'Month'}, {'label': 'One Year', 'value': 'OneYear'}, {'label': 'Two Year', 'value': 'TwoYear'}], value='Month', clearable=False, style={'color': '#333'}),
@@ -164,7 +150,7 @@ dcc.Slider(
                     dbc.CardBody([
                         dbc.Tabs([
                             # TAB 1: DASHBOARD
-                            dbc.Tab(label="Analytics Dashboard", tab_id="tab-dashboard", label_style={"color": "#00d2ff"}, children=[
+                            dbc.Tab(label="Customer Analysis", tab_id="tab-dashboard", label_style={"color": "#00d2ff"}, children=[
                                 html.Div(className="mt-4", children=[
                                     dbc.Row([
                                         dbc.Col([
@@ -185,9 +171,9 @@ dcc.Slider(
                                     dbc.Row([dbc.Col([html.H5([html.I(className="bi bi-list-check me-2"), "Top Risk Drivers"], id='res-title-3', className="mb-3"), dcc.Graph(id='feature-importance-graph', config={'displayModeBar': False}, style={'height': '200px'})], width=12)])
                                 ])
                             ]),
-                            
+
                             # TAB 2: HISTORY
-                            dbc.Tab(label="Customer History", tab_id="tab-history", label_style={"color": "#ffc107"}, children=[
+                            dbc.Tab(label="History", tab_id="tab-history", label_style={"color": "#ffc107"}, children=[
                                 html.Div(className="mt-4", children=[
                                     html.H5("Risk Score History", className="mb-3"),
                                     dcc.Graph(id='history-graph', config={'displayModeBar': False}, style={'height': '300px'}),
@@ -202,7 +188,22 @@ dcc.Slider(
             ], width=12, lg=8)
         ]),
 
-        # MODAL
+        # --- OFF CANVAS: PORTFOLIO RISK SIDEBAR ---
+        dbc.Offcanvas([
+            html.H5("Portfolio Risk Overview", className="mb-3"),
+            dcc.Loading(dcc.Graph(id='portfolio-pie', config={'displayModeBar': False}, style={'height': '250px'})),
+            html.Hr(),
+            html.Div(id='portfolio-stats', className="mb-4 text-center"),
+            
+            html.H6("🔴 Critical Risk (>70%)", className="text-danger fw-bold mt-4"),
+            html.Div(id='list-critical', style={'maxHeight':'150px', 'overflowY':'auto', 'border':'1px solid #444', 'padding':'10px', 'borderRadius':'5px'}),
+            
+            html.H6("🟡 At Risk (30-70%)", className="text-warning fw-bold mt-3"),
+            html.Div(id='list-at-risk', style={'maxHeight':'150px', 'overflowY':'auto', 'border':'1px solid #444', 'padding':'10px', 'borderRadius':'5px'}),
+
+        ], id="portfolio-sidebar", title="ChurnGuard Portfolio", is_open=False, placement="end", style={'backgroundColor': '#1a1a2e', 'color': 'white'}),
+
+        # --- MODAL: ADD CUSTOMER ---
         dbc.Modal([
             dbc.ModalHeader(dbc.ModalTitle("Add New Customer"), close_button=True),
             dbc.ModalBody([
@@ -220,51 +221,37 @@ dcc.Slider(
 # --- 5. CALLBACKS ---
 
 # --- A. SEARCH + ENABLE SNAPSHOT BTN ---
-
-# --- NEW: DYNAMIC SEARCH (Prevents Memory Crash) ---
 @app.callback(
     Output("search-dropdown", "options"),
     Input("search-dropdown", "search_value")
 )
 def update_search_options(search_value):
-    if not search_value:
-        # Prevent DB query if user hasn't typed anything
-        return dash.no_update
-    
+    if not search_value: return dash.no_update
     try:
-        # Only connect when user types
         conn = sqlite3.connect('churn.db')
-        
-        # Search for IDs starting with the typed text (LIMIT 10 for speed)
         query = f"SELECT customerID FROM customers WHERE customerID LIKE '{search_value}%' LIMIT 10"
         df_results = pd.read_sql(query, conn)
         conn.close()
-        
-        # Format for Dropdown
         return [{'label': i, 'value': i} for i in df_results['customerID']]
-    except:
-        return []
+    except: return []
     
 @app.callback(
     [Output('tenure-slider', 'value'), Output('charges-slider', 'value'), Output('contract-dropdown', 'value'), Output('search-msg', 'children'), Output('search-msg', 'style'), Output('btn-save-snapshot', 'disabled')],
     [Input('search-dropdown', 'value')] 
 )
 def search_customer_dropdown(customer_id):
-    if not customer_id:
-        return dash.no_update, dash.no_update, dash.no_update, "", {}, True
+    if not customer_id: return dash.no_update, dash.no_update, dash.no_update, "", {}, True
     try:
         conn = sqlite3.connect('churn.db')
         query = f"SELECT tenure, MonthlyCharges, Contract FROM customers WHERE customerID = '{customer_id}'"
         df_result = pd.read_sql(query, conn)
         conn.close()
-        if df_result.empty:
-            return dash.no_update, dash.no_update, dash.no_update, "❌ Not found.", {'color': 'red'}, True
+        if df_result.empty: return dash.no_update, dash.no_update, dash.no_update, "❌ Not found.", {'color': 'red'}, True
         row = df_result.iloc[0]
         contract_map = {'Month-to-month': 'Month', 'One year': 'OneYear', 'Two year': 'TwoYear'}
         mapped_contract = contract_map.get(row['Contract'], 'Month')
         return row['tenure'], row['MonthlyCharges'], mapped_contract, f"✅ Loaded: {customer_id}", {'color': '#2ECC40'}, False
-    except:
-        return dash.no_update, dash.no_update, dash.no_update, "DB Error", {'color': 'red'}, True
+    except: return dash.no_update, dash.no_update, dash.no_update, "DB Error", {'color': 'red'}, True
 
 # --- B. SAVE SNAPSHOT LOGIC ---
 @app.callback(
@@ -274,8 +261,6 @@ def search_customer_dropdown(customer_id):
 )
 def save_snapshot(n_clicks, customer_id, tenure, charges, contract):
     if not n_clicks or not customer_id: return ""
-    
-    # Calculate Risk Score for this snapshot
     input_data = pd.DataFrame(0, index=[0], columns=feature_names)
     input_data['tenure'] = tenure
     input_data['MonthlyCharges'] = charges
@@ -286,72 +271,108 @@ def save_snapshot(n_clicks, customer_id, tenure, charges, contract):
     
     try:
         risk_score = safe_predict(input_data)
-        
         conn = sqlite3.connect('churn.db')
         cursor = conn.cursor()
-        # Create table if not exists (Safety check)
         cursor.execute('''CREATE TABLE IF NOT EXISTS risk_history (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id TEXT, prediction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, risk_score REAL, tenure INTEGER, monthly_charges REAL, contract TEXT)''')
-        
-        cursor.execute("INSERT INTO risk_history (customer_id, risk_score, tenure, monthly_charges, contract) VALUES (?, ?, ?, ?, ?)", 
-                       (customer_id, float(risk_score), tenure, charges, contract))
+        cursor.execute("INSERT INTO risk_history (customer_id, risk_score, tenure, monthly_charges, contract) VALUES (?, ?, ?, ?, ?)", (customer_id, float(risk_score), tenure, charges, contract))
         conn.commit()
         conn.close()
         return f"✅ Snapshot saved! Risk: {risk_score*100:.1f}%"
-    except Exception as e:
-        return f"❌ Error saving: {str(e)}"
+    except Exception as e: return f"❌ Error saving: {str(e)}"
 
 # --- C. UPDATE HISTORY TAB ---
 @app.callback(
     [Output('history-graph', 'figure'), Output('history-table-container', 'children')],
-    [Input('tabs', 'active_tab'), 
-     Input('search-dropdown', 'value'), 
-     Input('save-msg', 'children')] # <--- CHANGED THIS: Listens to the confirmation message, not the button click
+    [Input('tabs', 'active_tab'), Input('search-dropdown', 'value'), Input('save-msg', 'children')]
 )
 def update_history_tab(active_tab, customer_id, save_msg_trigger):
-    # 1. Basic Checks
-    if active_tab != "tab-history" or not customer_id:
-        return go.Figure(), "Select a customer to view history."
-    
+    if active_tab != "tab-history" or not customer_id: return go.Figure(), "Select a customer to view history."
     try:
-        # 2. Use Context Manager for Safety
         with sqlite3.connect('churn.db', timeout=10) as conn:
-            
-            # Check table existence
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='risk_history'")
-            if not cursor.fetchone():
-                return go.Figure(), "No history yet. Click 'Save Snapshot' to start tracking."
-            
-            # Read Data
+            if not cursor.fetchone(): return go.Figure(), "No history yet. Click 'Save Snapshot'."
             df_hist = pd.read_sql(f"SELECT prediction_date, risk_score, tenure, monthly_charges FROM risk_history WHERE customer_id = '{customer_id}' ORDER BY prediction_date ASC", conn)
-            
-            if df_hist.empty:
-                return go.Figure(), "No history found for this customer. Save a snapshot first."
-            
-            # 3. Create Graph
+            if df_hist.empty: return go.Figure(), "No history found for this customer."
             fig = px.line(df_hist, x='prediction_date', y='risk_score', markers=True, title=f"Risk Trend: {customer_id}")
             fig.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(range=[0, 1]))
-            
-            # 4. Create Table
             table = dbc.Table.from_dataframe(df_hist.tail(5), striped=True, bordered=True, hover=True, className="text-white")
-            
             return fig, table
+    except Exception as e: return go.Figure(), "Error loading history."
 
-    except Exception as e:
-        print(f"❌ HISTORY ERROR: {e}") 
-        return go.Figure(), "Error loading history."
-
-# --- D. ADD USER MODAL ---
+# --- D. NEW: PORTFOLIO SIDEBAR LOGIC ---
 @app.callback(
-    [Output("add-modal", "is_open"), 
-     Output("search-dropdown", "options", allow_duplicate=True), # <--- ADD allow_duplicate=True
-     Output("search-dropdown", "value"), 
-     Output("add-user-msg", "children")],
+    [Output("portfolio-sidebar", "is_open"), 
+     Output('portfolio-pie', 'figure'), 
+     Output('portfolio-stats', 'children'), 
+     Output('list-critical', 'children'),
+     Output('list-at-risk', 'children')],
+    [Input("open-portfolio", "n_clicks")],
+    [State("portfolio-sidebar", "is_open")]
+)
+def toggle_portfolio(n1, is_open):
+    if not n1: return False, go.Figure(), "", "", ""
+    if is_open: return False, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    # If opening, run calculations
+    try:
+        conn = sqlite3.connect('churn.db')
+        df = pd.read_sql("SELECT customerID, tenure, MonthlyCharges, TotalCharges, Contract FROM customers LIMIT 1000", conn)
+        conn.close()
+
+        # --- FIX: FORCE NUMERIC TYPES ---
+        # This line fixes the "Invalid columns:TotalCharges: object" error
+        df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce').fillna(0)
+        df['MonthlyCharges'] = pd.to_numeric(df['MonthlyCharges'], errors='coerce').fillna(0)
+        df['tenure'] = pd.to_numeric(df['tenure'], errors='coerce').fillna(0)
+
+        # Preprocessing
+        df['Contract_Month-to-month'] = (df['Contract'] == 'Month-to-month').astype(int)
+        df['Contract_One year'] = (df['Contract'] == 'One year').astype(int)
+        df['Contract_Two year'] = (df['Contract'] == 'Two year').astype(int)
+
+        preds = safe_predict(df)
+        df['Risk_Score'] = preds
+        
+        def segment(score):
+            if score < 0.3: return 'Safe'
+            elif score < 0.7: return 'At Risk'
+            return 'Critical'
+        df['Risk_Category'] = df['Risk_Score'].apply(segment)
+        
+        # Pie Chart
+        counts = df['Risk_Category'].value_counts().reset_index()
+        counts.columns = ['Category', 'Count']
+        color_map = {'Safe': '#2ECC40', 'At Risk': '#FFDC00', 'Critical': '#FF4136'}
+        fig = px.pie(counts, values='Count', names='Category', color='Category', color_discrete_map=color_map, hole=0.4)
+        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font={'color': 'white'}, showlegend=True, margin=dict(t=0, b=0, l=0, r=0))
+
+        # Lists
+        crit_df = df[df['Risk_Category'] == 'Critical'].sort_values(by='Risk_Score', ascending=False)
+        risk_df = df[df['Risk_Category'] == 'At Risk'].sort_values(by='Risk_Score', ascending=False)
+        
+        def make_list(dframe):
+            if dframe.empty: return "None found."
+            return [html.Div([
+                html.Span(f"{row['customerID']}", className="fw-bold me-2"),
+                html.Span(f"{(row['Risk_Score']*100):.0f}%", className="badge bg-secondary")
+            ], className="mb-1 p-1 border-bottom border-secondary") for _, row in dframe.iterrows()]
+
+        stats = html.Div([html.Span(f"{len(crit_df)}", className="display-4 fw-bold text-danger me-2"), html.Span("Critical Customers")])
+
+        return True, fig, stats, make_list(crit_df), make_list(risk_df)
+    except Exception as e:
+        print(f"Portfolio Error: {e}")
+        return True, go.Figure(), f"Error: {str(e)}", "", ""
+
+
+# --- E. ADD USER MODAL ---
+@app.callback(
+    [Output("add-modal", "is_open"), Output("search-dropdown", "options", allow_duplicate=True), Output("search-dropdown", "value"), Output("add-user-msg", "children")],
     [Input("open-add-modal", "n_clicks"), Input("save-new-user", "n_clicks")],
     [State("add-modal", "is_open"), State("new-tenure", "value"), State("new-charges", "value"), State("new-contract", "value"), State("search-dropdown", "options")],
-    prevent_initial_call=True # <--- ADD THIS at the end
+    prevent_initial_call=True
 )
-
 def toggle_modal(open_clicks, save_clicks, is_open, tenure, charges, contract, current_options):
     trigger = ctx.triggered_id
     if trigger == "open-add-modal": return True, dash.no_update, dash.no_update, ""
@@ -368,7 +389,7 @@ def toggle_modal(open_clicks, save_clicks, is_open, tenure, charges, contract, c
         except Exception as e: return True, dash.no_update, dash.no_update, f"Error: {str(e)}"
     return is_open, dash.no_update, dash.no_update, ""
 
-# --- E. ANALYTICS & THEME ---
+# --- F. ANALYTICS & THEME ---
 @app.callback(
     [Output('main-page', 'style'), Output('app-title', 'style'), Output('app-subtitle', 'style'), Output('theme-toggle', 'style'), Output('theme-icon', 'className'), Output('input-card', 'style'), Output('result-card', 'style'), Output('input-title', 'style'), Output('res-title-1', 'style'), Output('res-title-2', 'style'), Output('res-title-3', 'style'), Output('lbl-tenure', 'style'), Output('lbl-charges', 'style'), Output('lbl-contract', 'style')],
     [Input('theme-toggle', 'n_clicks')]

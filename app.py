@@ -91,21 +91,23 @@ app.layout = html.Div(id='main-page', style={'minHeight': '100vh', 'fontFamily':
     dbc.Container([
         # HEADER
         dbc.Row([
+            # 1. TITLE COLUMN (Full width on mobile, Half on Desktop)
             dbc.Col([
                 html.H1([html.I(className="bi bi-robot me-2"), "ChurnGuard AI"], 
-                        id='app-title', className="text-start text-md-center", style={'fontWeight': '600', 'letterSpacing': '1px'}),
+                        id='app-title', className="text-center text-md-start", style={'fontWeight': '600', 'letterSpacing': '1px'}),
                 html.P("Real-time Customer Retention Analytics", 
-                        id='app-subtitle', className="text-start text-md-center mb-0", style={'fontSize': '0.9rem'})
-            ], width=7, md=7, className="d-flex flex-column justify-content-center"),
+                        id='app-subtitle', className="text-center text-md-start mb-0", style={'fontSize': '0.9rem'})
+            ], width=12, md=6, className="d-flex flex-column justify-content-center mb-3 mb-md-0"), 
             
-            # HEADER BUTTONS
+            # 2. BUTTONS COLUMN (Full width on mobile, Half on Desktop)
             dbc.Col([
                 # Portfolio Trigger Button
                 dbc.Button([html.I(className="bi bi-pie-chart-fill me-2"), "Portfolio Risk"], 
-                           id="open-portfolio", n_clicks=0, color="info", className="me-3", style={'fontWeight':'600'}),
+                           id="open-portfolio", n_clicks=0, color="info", className="me-2", style={'fontWeight':'600'}),
                 
+                # Theme Toggle
                 dbc.Button(html.I(id='theme-icon', className="bi bi-sun-fill"), id='theme-toggle', n_clicks=0, className="d-flex align-items-center justify-content-center")
-            ], width=5, md=5, className="d-flex justify-content-end align-items-center")
+            ], width=12, md=6, className="d-flex justify-content-center justify-content-md-end align-items-center") 
         ], className="mb-5 align-items-center"),
 
         dbc.Row([
@@ -296,8 +298,13 @@ def update_history_tab(active_tab, customer_id, save_msg_trigger):
             if df_hist.empty: return go.Figure(), "No history found for this customer."
             fig = px.line(df_hist, x='prediction_date', y='risk_score', markers=True, title=f"Risk Trend: {customer_id}")
             fig.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(range=[0, 1]))
+            
+            # Create Table
             table = dbc.Table.from_dataframe(df_hist.tail(5), striped=True, bordered=True, hover=True, className="text-white")
-            return fig, table
+            
+            # --- FIX: WRAP IN SCROLLABLE DIV ---
+            return fig, html.Div(table, style={'overflowX': 'auto'})
+            
     except Exception as e: return go.Figure(), "Error loading history."
 
 # --- D. NEW: PORTFOLIO SIDEBAR LOGIC ---
